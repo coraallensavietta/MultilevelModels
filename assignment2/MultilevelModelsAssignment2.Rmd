@@ -1,0 +1,223 @@
+---
+title: "Multilevel Models Assignment 2"
+author: "Cora Allen-Coleman"
+date: "2/12/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(ggplot2)
+require(dplyr)
+require(lme4)
+#read in data
+math <- read.csv("/Users/cora/HardDriveDocuments/UW-Madison/Courses/Spring2018/MultilevelModels/Assignments/assignment2/hw02.csv", header = TRUE)
+```
+
+1. Calculate the mean, median, standard deviation, minimum, and maximum of the mathematics exam scores. Produce a graph that displays the distribution of scores. Comment on any notable features of this distribution.
+```{r math, echo=FALSE}
+summary(math$Score)
+print("standard deviation")
+sd(math$Score)
+#graph
+hist(math$Score)
+```
+This distribution is discrete, with integer values from 2 to 25. It appears to be unimodel, with a center at about 15. The spread covers most of the distribution heavily, with a standard deviation of 5.7. Despite the discrete nature of this distribution, it could be considered normal, with somewhat heavy tails. It would, however, probably be a better idea to consider this to be a discretely distributed variable, with possible integer values from 0 to 25.
+
+2. Repeat problem 1 for the socioeconomic variable SES.
+```{r SES, echo=FALSE}
+summary(math$SES)
+print("standard deviation")
+sd(math$SES)
+#graph
+hist(math$SES) 
+```
+SES measures socioeconomic status with higher values indicating higher status. The variable SES is bounded and continuous, with a range of .7 to 10.  The distribution appears to be roughly normal with a slightly left skew (median = 6.40, mean = 6.30). The standard deviation is 2.02.
+
+3. Create a graph that shows the relationship between SES and exam score.
+```{r relationship, echo=FALSE}
+ggplot(math, aes(x = SES, y = Score)) + geom_point(aes(SES, Score), alpha = .4)
+```
+4. For each school, calculate the mean SES value, the mean exam score, and the number of students
+sampled from the school. How many total students and schools are in the data set?
+```{r school summaries, echo=FALSE}
+#group by schools
+math_s <- group_by(math, School)
+#mean SES value, the mean exam score, and the number of students sampled
+summary_df <- summarize(math_s, SES_Mean = mean(SES, na.rm = T), Exam_Mean = mean(Score, na.rm = T), Student_Count = n()); summary_df
+#total students and schools
+print("Number of Students")
+nrow(math)
+print("Number of Schools")
+length(unique(math$School))
+```
+There are 1000 students and 159 schools in the data set.
+
+5. Create a graph with a point for each school that shows the relationship between the mean SES and
+exam score values. Comment on any notable features.
+```{r summary graph, echo=FALSE}
+ggplot(summary_df, aes(x = SES_Mean, y = Exam_Mean)) + geom_point(aes(SES_Mean, Exam_Mean), alpha = .7) + xlab("Mean SES") + ylab("Mean Exam Score") + ggtitle("SES and Exam Score by School")
+```
+This scatterplot shows a positive correlation between a school's average SES and a school's average exam score.
+
+6. Create a graph that displays the distribution of sample sizes among schools.
+```{r school sample size, echo=FALSE}
+ggplot(summary_df, aes(summary_df$Student_Count)) + geom_histogram(binwidth = .3) + xlab("School Student Sample Size") + ylab("Number of Schools") + ggtitle("Sample Sizes by School")
+```
+
+7. Identify the labels of these five schools:
+• School A (small/low): Among all schools with the minimum sample size, the school with the
+smallest average SES value.
+• School B (small/high): Among all schools with the minimum sample size, the school with the
+largest average SES value.
+• School C (large/low): Among all schools with the maximum sample size, the school with the
+lowest average SES.
+• School D (large/high): Among all schools with the maximum sample size, the school with the
+highest average SES.
+• School E (typical): Among all schools with the median sample size, the school with the median
+mean SES score.
+```{r identify, echo=FALSE}
+#small, low
+print("School A is")
+arrange(filter(summary_df, Student_Count == 1), SES_Mean)[1,]
+#small, high
+print("School B is")
+arrange(filter(summary_df, Student_Count == 1), SES_Mean)[5, ]
+#large/low
+print("School C is")
+arrange(filter(summary_df, Student_Count == max(summary_df$Student_Count)), SES_Mean)[1,]
+#large/high
+print("School D is")
+arrange(filter(summary_df, Student_Count == max(summary_df$Student_Count)), SES_Mean)[4, ]
+#typical
+print("School E is")
+typical <- arrange(filter(summary_df, Student_Count == median(summary_df$Student_Count)), SES_Mean); typical[13, ]
+```
+
+8. Fit a random intercept model using lmer() from the lme4 package. **Report the estimated parameter values and associated standard errors in a table**. Write all of the distributional assumptions among the parameters and data.
+```{r random intercept model, echo=FALSE}
+lmeRandInt <- lmer(Score ~ SES + (1 | School), data = math)
+lmeRandInt_sum <- summary(lmeRandInt)
+
+lmeTable <- as.data.frame(lmeRandInt_sum$coefficients[,c(0,1, 2)])
+lmeTable <- round(lmeTable, 2)
+lmeTable["School Intercept Random Effect",1] <- "na"
+lmeTable["School Intercept Random Effect",2] <- "1.99 (Std. Deviation)"
+#lmeRandInt_sum$varcor
+```
+##Table of estimated parameter values and associated standard errors
+```{r}
+require(knitr)
+kable(lmeTable)
+```
+
+##Distributional assumptions among the parameters and data
+For the lme random intercepts models, we must assume:
+- that the model is correctly specified. The resulting residuals should be roughly linear. In this case, in addition to assuming a linear relationship between predictors and outcome, we're assuming that the schools may vary in intercept, but all schools share the same slope. (Note: Is this last sentence quite right? I'd love to hear your thoughts.)
+- The residual errors will be normally distributed.
+- The residuals will be independent.
+- The residuals have an equal variance.
+
+9. Fit a random intercept model using Stan. Use normal(0,100) prior distributions for the slope and intercept and Half-Cauchy(0,5) prior distributions for the individual level and school level standard deviations. Report the estimated parameter values and associated standard errors in a table. Write all of the distributional assumptions among the parameters and data.
+
+##Stan Code
+in file randInt.stan (attached)
+
+##Data set-up
+
+```{r, echo=FALSE}
+require(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+math_data = list(
+  N = nrow(math),
+  J = with(math,length(unique(School))),
+  y = with(math, Score),
+  x = with(math, SES),
+  school = with(math,as.integer(as.factor(School))) #goes in numeric order, but shifts them up so that all starting at 1
+)
+```
+
+
+## Run the code
+```{r, echo=FALSE}
+stanRandInt = stan(file="randInt.stan", data=math_data, seed = 10)
+summary(stanRandInt)
+```
+
+## table of estimated parameter values and associated SEs
+```{r, echo=FALSE}
+beta = rstan::extract(stanRandInt, pars="beta")
+beta = beta$beta
+# posterior means
+randInt_para <- as.data.frame(apply(beta,2,mean))
+randInt_para[,2] <- as.matrix(apply(beta,2,sd))
+names(randInt_para) <- c("Parameters", "SDs")
+
+alpha = rstan::extract(stanRandInt, pars="alpha")
+alpha = alpha$alpha
+randInt_para[3,1] <- "na"
+randInt_para[3,2] <- sd(alpha)
+rownames(randInt_para) <- c("Intercept", "Slope", "School Intercept Effect")
+kable(randInt_para, caption="STAN Random Intercept Model Estimated Paramters and SEs")
+```
+
+##Distributional assumptions among the parameters and data.
+To trust the results of this analysis, we must make these assumptions:
+- Our outcome, math scores, can be adequately modeled using a normal distribution.
+- Observations (after conditioning on our predictors and random effects) must be independent. This can also be expressed as exchangeability.
+- Because we were aiming to use a non-informative prior for this analysis, our posterior should not sensitive to our choice of prior.
+
+#10. Compare 95% confidence intervals/credible regions for the slope and intercept of each model.
+
+```{r}
+require(lmeresampler)
+## you can write your own function to return stats, or use something like
+# mySumm <- function(.) {
+# s <- getME(., "sigma")
+# c(beta = getME(., "beta"), sigma = s, sig01 = unname(s * getME(., "theta")))
+# }
+#95% CI for lme model for betas (intercept and slope)
+Intercept_CI <- round(c(9.06235-1.96*0.59171, 9.06235+1.96*0.59171), 2); Intercept_CI
+slope_CI  <- round(c(0.87685-1.96*0.08703, 0.87685+1.96*0.08703), 2); slope_CI         
+
+#bootstrap(lmeRandInt, fn = myInt, type = "residual", B = 1000)
+apply(beta,2,quantile,probs=c(0.025,0.975)) #bayesian
+```
+
+The linear model gives a 95% confidence interval for the intercept of (7.90, 10.22) and for the slope of (0.71 1.05). 
+The Bayesian model provides a 95% credible region end points. The intercept's credible region is (7.83, 10.30) and slope's CR is (0.70, 1.06). The linear model's confidence intervals are slightly narrower for both intercept and slope, suggesting that it has underestimated the uncertainty in its estimates compared with the bayesian model.
+
+#11
+Run another Stan analysis with the same model as problem 9, but a different random seed. How do the 95% credible regions of the slope and intercept compare with those computed in the Stan analysis in problem 10?
+```{r, echo=FALSE, include=FALSE}
+stanRandInt = stan(file="randInt.stan", data=math_data, seed = 3)
+beta = rstan::extract(stanRandInt, pars="beta")
+beta = beta$beta
+apply(beta,2,quantile,probs=c(0.025,0.975)) #bayesian
+```
+ This interation's intervals:
+ [Intercept]      [Slope]
+  2.5%   7.885354 0.6968763
+  97.5% 10.291440 1.0507561
+
+This interation's interval is slightly narrower for intercept and slightly wider for slope.
+ 
+##12
+Run another Stan analysis, but change the prior distributions for the slope and intercept to be Cauchy(0,5). How do the 95% credible regions of the slope and intercept compare with those computed in the Stan analysis in problem 10? 
+```{r}
+stanRandInt = stan(file="randInt.stan", data=math_data, seed = 3)
+beta = rstan::extract(stanRandInt, pars="beta")
+beta = beta$beta
+apply(beta,2,quantile,probs=c(0.025,0.975)) #bayesian
+
+```
+
+
+
+#prediction
+```{r}
+require(merTools)
+predictInterval(lmeRandInt)
+```
