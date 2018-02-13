@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 require(ggplot2)
 require(dplyr)
 require(lme4)
+require(rstan)
 #read in data
 math <- read.csv("/Users/cora/HardDriveDocuments/UW-Madison/Courses/Spring2018/MultilevelModels/Assignments/assignment2/hw02.csv", header = TRUE)
 ```
@@ -46,9 +47,7 @@ math_s <- group_by(math, School)
 #mean SES value, the mean exam score, and the number of students sampled
 summary_df <- summarize(math_s, SES_Mean = mean(SES, na.rm = T), Exam_Mean = mean(Score, na.rm = T), Student_Count = n()); summary_df
 #total students and schools
-print("Number of Students")
 nrow(math)
-print("Number of Schools")
 length(unique(math$School))
 ```
 There are 1000 students and 159 schools in the data set.
@@ -204,20 +203,130 @@ apply(beta,2,quantile,probs=c(0.025,0.975)) #bayesian
 
 This interation's interval is slightly narrower for intercept and slightly wider for slope.
  
-##12
+#12
 Run another Stan analysis, but change the prior distributions for the slope and intercept to be Cauchy(0,5). How do the 95% credible regions of the slope and intercept compare with those computed in the Stan analysis in problem 10? 
-```{r}
-stanRandInt = stan(file="randInt.stan", data=math_data, seed = 3)
+```{r, echo=FALSE, include=FALSE}
+stanRandInt = stan(file="randInt_CauchyPriors.stan", data=math_data, seed = 3)
 beta = rstan::extract(stanRandInt, pars="beta")
 beta = beta$beta
 apply(beta,2,quantile,probs=c(0.025,0.975)) #bayesian
+```
+Cauchy Prior Credible Intervals:
+        Intercept     Slope
+  2.5%   7.847474 0.7122736
+  97.5% 10.167649 1.0578679
+These intervals are slightly narrower than question 10's, reflecting the narrower range of likely values in our Cauchy prior distributions.
 
+#13
+Create a graph that compares the estimated school effects from the lmer analysis with the posterior means of the school effect distributions from the Stan analysis. Comment on what the graph says about the similarity of the two analyses.
+```{r, echo=FALSE}
+reffects <- ranef(lmeRandInt)$School
+
+alpha = rstan::extract(stanRandInt, pars="alpha")
+alpha = alpha$alpha
+# posterior means
+alpha_means <- as.matrix(apply(alpha,2,mean))
+reffects[,2] <- apply(alpha,2,mean)
+names(reffects) <- c("lme", "stan")
+ggplot(reffects, aes(x = lme, y = stan)) + geom_point(aes(lme, stan), alpha = .4) + xlab("stan") + ylab("lme") + ggtitle("Comparison of lme and stan School Effect Estimates")
+```
+If the estimates were equal, we would expect the points to line up on the y=x diagonal. Because they do align along this axis, we an conclude that the analyses make similar estimates of school effects.
+
+##14 Confidence Intervals
+Refer to the schools identified in problem 7. For each school, find 95% confidence intervals/credible regions for: (1) the mean mathematics exam score for all students in the school; and (2) the mean mathematics exam score for all students in the school with an SES value of 7. Compare these intervals from the lmer and Stan analyses and briefly comment on similarities and differences (among the schools and between the two analyses).
+```{r}
+#School A: 4420
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school
+#estimate:
+A_est_mean <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*as.numeric(summary_df[71, 2]) + reffects["4420", 1]
+#se:
+A_se_mean <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+A_CI_mean <- c(A_est_mean - A_se_mean, A_est_mean + A_se_mean); A_CI_mean
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school with SES = 7
+#estimate:
+A_est_7 <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*7 + reffects["4420", 1]
+#se:
+A_se_7 <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+A_CI_7 <- c(A_est_7 - A_se_7, A_est_7 + A_se_7); A_CI_7
+
+#School B: 3039 
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school
+#estimate:
+B_est_mean <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*as.numeric(summary_df[42, 2]) + reffects["3039", 1]
+#se:
+B_se_mean <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+B_CI_mean <- c(B_est_mean - B_se_mean, B_est_mean + B_se_mean); B_CI_mean
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school with SES = 7
+#estimate:
+B_est_7 <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*7 + reffects["3039", 1]
+#se:
+B_se_7 <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+B_CI_7 <- c(B_est_7 - B_se_7, B_est_7 + B_se_7); B_CI_7
+
+#School C: 4173
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school
+#estimate:
+C_est_mean <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*as.numeric(summary_df[63, 2]) + reffects["4173", 1]
+#se:
+C_se_mean <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+C_CI_mean <- c(C_est_mean - C_se_mean, C_est_mean + C_se_mean); C_CI_mean
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school with SES = 7
+#estimate:
+C_est_7 <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*7 + reffects["4173", 1]
+#se:
+C_se_7 <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+C_CI_7 <- c(C_est_7 - C_se_7, C_est_7 + C_se_7); C_CI_7
+
+#School D: 9104
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school
+#estimate:
+D_est_mean <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*as.numeric(summary_df[148, 2]) + reffects["9104", 1]
+#se:
+D_se_mean <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+D_CI_mean <- c(D_est_mean - D_se_mean, D_est_mean + D_se_mean); D_CI_mean
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school with SES = 7
+#estimate:
+D_est_7 <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*7 + reffects["9104", 1]
+#se:
+D_se_7 <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+D_CI_7 <- c(D_est_7 - D_se_7, D_est_7 + D_se_7); D_CI_7
+
+#School E: 3705
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school
+#estimate:
+E_est_mean <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*as.numeric(summary_df[55, 2]) + reffects["3705", 1]
+#se:
+E_se_mean <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+E_CI_mean <- c(E_est_mean - E_se_mean, E_est_mean + E_se_mean); E_CI_mean
+#95% confidence intervals/credible regions for the mean mathematics exam score for all students in the school with SES = 7
+#estimate:
+E_est_7 <- lmeRandInt_sum$coefficients[1,1] + lmeRandInt_sum$coefficients[2,1]*7 + reffects["3705", 1]
+#se:
+E_se_7 <- lmeRandInt_sum$coefficients[1,2] + lmeRandInt_sum$coefficients[2,2]
+E_CI_7 <- c(E_est_7 - E_se_7, E_est_7 + E_se_7); E_CI_7
 ```
 
-
-
+##15 Prediction Intervals
+Refer to the schools identified in problem 7. For each school, find a 95% prediction interval for the
+mathematics exam score of a single student with an SES value of 7. Comment on differences and
+similarities between the two analyses and among the five schools.
 #prediction
 ```{r}
 require(merTools)
 predictInterval(lmeRandInt)
 ```
+
+
+##16
+Create residual plots for each analysis. Refer to these residual plots and comment on the suitability of
+the models as a framework for making inferences about the relationships between SES and mathematics
+exam scores for students in this population. If you were to pursue an alternative model, what might
+you consider doing?
+```{r}
+#lme
+
+#stan
+
+
+```
+If I were to consider an alternative model, I would use a random intercepts and slopes model. This would allow each school to start at a different intercept and be impacted by SES differently.
